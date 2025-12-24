@@ -1,0 +1,91 @@
+import {
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  MaxFileSizeValidator,
+  Param,
+  ParseFilePipe,
+  Post,
+  Res,
+  UploadedFile,
+  UseGuards,
+  UseInterceptors,
+  UnprocessableEntityException,
+} from '@nestjs/common';
+import { CheckPermission } from '@rahino/permission-checker/decorator';
+import { PermissionGuard } from '@rahino/permission-checker/guard';
+import { JsonResponseTransformInterceptor } from '@rahino/response/interceptor';
+import {
+  ApiBearerAuth,
+  ApiBody,
+  ApiConsumes,
+  ApiOperation,
+  ApiTags,
+} from '@nestjs/swagger';
+import { Response } from 'express';
+import { JwtGuard } from '@rahino/auth';
+import { HomePagePhotoService } from './home-page-photo.service';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { imageOptions } from './file-options';
+import { GetUser } from '@rahino/auth';
+import { User } from '@rahino/database';
+
+@ApiTags('HomePagePhotos')
+@Controller({
+  path: '/api/ecommerce/homePagePhotos',
+  version: ['1'],
+})
+export class HomePagePhotoController {
+  constructor(private service: HomePagePhotoService) {}
+
+  @ApiBearerAuth()
+  @UseGuards(JwtGuard, PermissionGuard)
+  @UseInterceptors(JsonResponseTransformInterceptor)
+  @CheckPermission({ permissionSymbol: 'ecommerce.homepagephotos.uploadImage' })
+  @UseInterceptors(FileInterceptor('file', imageOptions()))
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        file: {
+          type: 'string',
+          format: 'binary',
+        },
+      },
+    },
+  })
+  @Post('/image')
+  @HttpCode(HttpStatus.OK)
+  async uploadImage(
+    @GetUser() user: User,
+    @UploadedFile(
+      new ParseFilePipe({
+        validators: [new MaxFileSizeValidator({ maxSize: 2097152 })],
+        fileIsRequired: false,
+        errorHttpStatusCode: HttpStatus.UNPROCESSABLE_ENTITY,
+      }),
+    )
+    file?: Express.Multer.File,
+  ) {
+    if (file && !['image/jpeg', 'image/png'].includes(file.mimetype)) {
+      throw new UnprocessableEntityException(
+        `Validation failed (current file type is ${file.mimetype}, expected type is /(jpg|png|jpeg)/)`,
+      );
+    }
+
+    return await this.service.uploadImage(user, file);
+  }
+
+  //@CheckPermission({ permissionSymbol: 'ecommerce.homepagephotos.showImage' })
+  @ApiOperation({ description: 'show home page photo by id' })
+  @Get('/image/:id')
+  @HttpCode(HttpStatus.OK)
+  async getImage(
+    @Res({ passthrough: true }) res: Response,
+    @Param('id') attachmentId: bigint,
+  ) {
+    return await this.service.getPhoto(attachmentId, res);
+  }
+}
