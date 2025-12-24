@@ -5,7 +5,7 @@ services:
     #dns:
     #- 8.8.8.8
     #- 8.8.4.4
-    container_name: main_api
+    container_name: hojreapi
     ports:
       - '3001:3001'
     extra_hosts:
